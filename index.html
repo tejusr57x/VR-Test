@@ -3,220 +3,327 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bedroom — VR Walkthrough</title>
+<title>Bedroom 13' × 13' — VR Walkthrough</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#101014;
+  html, body { margin:0; height:100%; overflow:hidden; background:#0c0c10;
                font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  canvas { display:block; }
-  #hud {
-    position:fixed; left:16px; top:16px; max-width:330px; z-index:10;
-    background:rgba(16,16,20,.82); border:1px solid rgba(255,255,255,.14);
-    border-radius:12px; padding:14px 16px; color:#e8e6e2; font-size:13px; line-height:1.55;
-    backdrop-filter:blur(8px);
-    padding-top: calc(14px + env(safe-area-inset-top, 0px));
-  }
-  #hud h1 { font-size:14px; margin:0 0 8px; font-weight:600; letter-spacing:.2px; }
+  canvas { display:block; touch-action:none; }
+  #hud { position:fixed; left:14px; top:14px; max-width:320px; z-index:10;
+    background:rgba(14,14,18,.84); border:1px solid rgba(255,255,255,.14);
+    border-radius:12px; padding:13px 15px; color:#e9e7e3; font-size:12.5px; line-height:1.6;
+    backdrop-filter:blur(8px); padding-top:calc(13px + env(safe-area-inset-top,0px)); }
+  #hud h1 { font-size:13.5px; margin:0 0 7px; font-weight:600; }
   #hud b { color:#fff; font-weight:600; }
-  #hud .row { margin:3px 0; }
-  #hud .dim { color:#9a978f; }
-  #status { margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.12);
-            color:#9a978f; font-size:12px; }
+  #hud .dim { color:#98958d; }
+  #status { margin-top:9px; padding-top:8px; border-top:1px solid rgba(255,255,255,.12);
+            color:#98958d; font-size:11.5px; }
+  #btns { position:fixed; left:14px; bottom:14px; z-index:11; display:flex; gap:7px;
+          margin-bottom:env(safe-area-inset-bottom,0px); }
+  #btns button { background:rgba(14,14,18,.84); border:1px solid rgba(255,255,255,.14);
+    color:#c9c6c0; border-radius:9px; padding:7px 12px; font-size:11.5px; cursor:pointer; }
   #drop { position:fixed; inset:0; z-index:20; display:none; align-items:center;
-          justify-content:center; background:rgba(10,10,14,.9); color:#fff; font-size:18px; }
+          justify-content:center; background:rgba(8,8,12,.92); color:#fff; font-size:17px; }
   #drop.on { display:flex; }
-  #hide { position:fixed; left:16px; bottom:16px; z-index:10; cursor:pointer;
-          background:rgba(16,16,20,.82); border:1px solid rgba(255,255,255,.14);
-          color:#c9c6c0; border-radius:9px; padding:7px 13px; font-size:12px;
-          margin-bottom: env(safe-area-inset-bottom, 0px); }
-  #VRButton { z-index:12 !important; }
 </style>
 <script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
-  }
-}
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+}}
 </script>
 </head>
 <body>
 
 <div id="hud">
-  <h1>Bedroom — 13' × 13'</h1>
-  <div class="row"><b>In VR:</b> left stick walks, right stick turns</div>
-  <div class="row"><b>Grip</b> to move faster &middot; <b>right stick up/down</b> adjusts height</div>
-  <div class="row dim" style="margin-top:8px"><b>On desktop:</b> click to look, W A S D to walk, Shift to run</div>
-  <div id="status">Loading model…</div>
+  <h1>Bedroom — 13'0" × 13'0" × 10'0"</h1>
+  <div><b>VR:</b> left stick walks &middot; right stick turns</div>
+  <div><b>Grip</b> run &middot; <b>A / X</b> recentre &middot; <b>B / Y</b> 1&thinsp;m grid</div>
+  <div class="dim" style="margin-top:6px"><b>Flat screen:</b> drag to look &middot; W A S D walk &middot; Shift run &middot; R recentre</div>
+  <div id="status">Loading…</div>
 </div>
-<div id="hide">hide</div>
-<div id="drop">Drop <b style="margin:0 6px">bedroom_vr.glb</b> anywhere to load it</div>
+
+<div id="btns">
+  <button id="bReset">Recentre</button>
+  <button id="bGrid">1 m grid</button>
+  <button id="bHud">Hide</button>
+</div>
+
+<div id="drop">Drop <b style="margin:0 6px">bedroom_vr_v2.glb</b> to load</div>
 
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 
-const MODEL_URL = 'bedroom_vr.glb';   // keep the .glb beside this HTML file
-const MODEL_SCALE = 0.001;            // the GLB is authored in millimetres
-const START = new THREE.Vector3(2.0, 0, 1.6);  // just inside the door, metres
-const WALK = 1.6, RUN = 3.2, TURN_STEP = Math.PI / 6;
+/* ============================ tweakables ============================ */
+const MODEL_URL = 'bedroom_vr_v2.glb';   // Y-up, metres, 1:1
 
+// Lighting preset. Azimuth is measured from north, clockwise.
+// 180 = sun in the SOUTH, behind the solid wall, so almost no direct beam
+// reaches the room. Set SUN_AZIMUTH = 0 to pour golden light in through the
+// north window, the way your render looks.
+const SUN_AZIMUTH   = 180;
+const SUN_ELEVATION = 22;
+const SUN_INTENSITY = 2.0;
+const SUN_KELVIN    = 5200;
+const WIN_INTENSITY = 900,  WIN_SIZE = [1.52, 0.91], WIN_KELVIN = 4800;
+const BAL_INTENSITY = 500,  BAL_SIZE = [1.52, 2.13], BAL_KELVIN = 5000;
+const LAMP_INTENSITY = 60,  LAMP_KELVIN = 2700;
+const EXPOSURE_EV = 0.0;
+
+// You start just inside the door, facing the window.
+const START = new THREE.Vector3(1.55, 0, -0.95);
+const START_YAW = 0;                       // 0 looks toward −Z (north / window)
+const WALK = 1.5, RUN = 3.0, TURN_STEP = THREE.MathUtils.degToRad(30);
+/* ==================================================================== */
+
+const UP = new THREE.Vector3(0, 1, 0);
 const statusEl = document.getElementById('status');
 const hudEl = document.getElementById('hud');
 const dropEl = document.getElementById('drop');
-document.getElementById('hide').onclick = () => {
-  hudEl.style.display = hudEl.style.display === 'none' ? 'block' : 'none';
-};
 
-// ---------------------------------------------------------------- renderer
+function kelvin(K) {
+  const t = K / 100;
+  let r, g, b;
+  if (t <= 66) { r = 255; g = 99.47 * Math.log(t) - 161.12; }
+  else { r = 329.7 * Math.pow(t - 60, -0.1332); g = 288.12 * Math.pow(t - 60, -0.0755); }
+  if (t >= 66) b = 255;
+  else if (t <= 19) b = 0;
+  else b = 138.52 * Math.log(t - 10) - 305.04;
+  const cl = v => Math.min(255, Math.max(0, v)) / 255;
+  return new THREE.Color(cl(r), cl(g), cl(b)).convertSRGBToLinear();
+}
+
+/* ------------------------------- renderer ------------------------------- */
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = Math.pow(2, EXPOSURE_EV);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
+RectAreaLightUniformsLib.init();
 
-// ---------------------------------------------------------------- scene
+/* --------------------------------- rig ---------------------------------
+   player  : world position + yaw. All turning happens here.
+   pitchObj: flat-screen look up/down only. Forced to zero in VR so the
+             headset alone controls pitch and roll — this is what stops the
+             tilted / rolling view.
+   camera  : child of pitchObj.
+------------------------------------------------------------------------ */
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0e0e12);
+scene.background = new THREE.Color(0x0b0b0f);
 
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 300);
+camera.position.set(0, 1.62, 0);          // flat-screen eye height; XR overrides
 
-const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 200);
-camera.position.set(0, 1.62, 0);
-
+const pitchObj = new THREE.Object3D();
+pitchObj.add(camera);
 const player = new THREE.Group();
+player.add(pitchObj);
 player.position.copy(START);
-player.add(camera);
+player.rotation.order = 'YXZ';
+player.rotation.y = START_YAW;
 scene.add(player);
 
-// late-afternoon sun coming in through the north window
-const sun = new THREE.DirectionalLight(0xffd9a8, 3.4);
-sun.position.set(-2.5, 4.2, 11);
-sun.target.position.set(2, 1, 2);
+/* ------------------------------- lighting ------------------------------- */
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.05).texture;
+
+const az = THREE.MathUtils.degToRad(SUN_AZIMUTH);
+const el = THREE.MathUtils.degToRad(SUN_ELEVATION);
+const sunDir = new THREE.Vector3(
+  Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+const roomCentre = new THREE.Vector3(1.98, 1.2, -1.98);
+
+const sun = new THREE.DirectionalLight(kelvin(SUN_KELVIN), SUN_INTENSITY);
+sun.position.copy(roomCentre).addScaledVector(sunDir, 28);
+sun.target.position.copy(roomCentre);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.near = 0.5;
-sun.shadow.camera.far = 30;
-sun.shadow.camera.left = -8; sun.shadow.camera.right = 8;
-sun.shadow.camera.top = 8; sun.shadow.camera.bottom = -8;
-sun.shadow.bias = -0.0006;
-sun.shadow.normalBias = 0.02;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 60;
+sun.shadow.camera.left = -9; sun.shadow.camera.right = 9;
+sun.shadow.camera.top = 9;  sun.shadow.camera.bottom = -9;
+sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.022;
 scene.add(sun, sun.target);
 
-scene.add(new THREE.HemisphereLight(0xdfe6f0, 0x6b5f4e, 0.75));
+const winLight = new THREE.RectAreaLight(kelvin(WIN_KELVIN), WIN_INTENSITY, WIN_SIZE[0], WIN_SIZE[1]);
+winLight.position.set(1.98, 1.52, -3.94);
+winLight.lookAt(1.98, 1.30, -1.0);
+scene.add(winLight);
 
-const bounce = new THREE.PointLight(0xffe2bd, 12, 9, 2);
-bounce.position.set(2, 1.4, 2.4);
-scene.add(bounce);
+const balLight = new THREE.RectAreaLight(kelvin(BAL_KELVIN), BAL_INTENSITY, BAL_SIZE[0], BAL_SIZE[1]);
+balLight.position.set(0.04, 1.10, -2.36);
+balLight.lookAt(2.2, 1.10, -2.36);
+scene.add(balLight);
 
-// ---------------------------------------------------------------- model
+const lampCol = kelvin(LAMP_KELVIN);
+for (const x of [0.96, 3.00]) {
+  const p = new THREE.PointLight(lampCol, LAMP_INTENSITY, 6.5, 2);
+  p.position.set(x, 1.02, -3.73);
+  scene.add(p);
+}
+
+scene.add(new THREE.HemisphereLight(0xd8e2f0, 0x584c3c, 0.35));
+
+/* -------------------------------- model --------------------------------- */
+const grid = new THREE.GridHelper(10, 10, 0x6fd3ff, 0x3a6f88);
+grid.position.set(1.98, 0.006, -1.98);
+grid.visible = false;
+grid.material.transparent = true; grid.material.opacity = 0.5;
+scene.add(grid);
+
 const loader = new GLTFLoader();
+let model = null;
 
 function addModel(gltf) {
-  const root = gltf.scene;
-  root.scale.setScalar(MODEL_SCALE);
-  root.traverse(o => {
+  if (model) scene.remove(model);
+  model = gltf.scene;
+  let note = '';
+
+  // safety net: if a file arrives Z-up, stand it back up
+  const b = new THREE.Box3().setFromObject(model);
+  const size = b.getSize(new THREE.Vector3());
+  if (size.z > size.y * 1.4) {
+    model.rotation.x = -Math.PI / 2;
+    model.updateMatrixWorld(true);
+    note = 'Z-up file detected — rotated to Y-up. ';
+  }
+
+  model.traverse(o => {
     if (!o.isMesh) return;
-    o.castShadow = true;
-    o.receiveShadow = true;
+    o.castShadow = true; o.receiveShadow = true;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of mats) {
       if (!m) continue;
       if (m.map) { m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = 8; }
-      // the backdrop planes are lit photographs — don't shade them
-      if (o.name && o.name.startsWith('view_')) {
-        o.castShadow = false; o.receiveShadow = false;
-        if (m.map) {
-          const flat = new THREE.MeshBasicMaterial({ map: m.map, toneMapped: false });
-          o.material = flat;
-        }
+      m.side = THREE.FrontSide;
+      if (/^lamp_shade|^ceil_light/.test(o.name)) {
+        m.emissive = lampCol.clone(); m.emissiveIntensity = 1.6;
+        o.castShadow = false;
       }
-      m.side = THREE.DoubleSide;
+      if (/^view_/.test(o.name)) {           // backdrop photos are already lit
+        o.castShadow = false; o.receiveShadow = false;
+        o.material = new THREE.MeshBasicMaterial({ map: m.map, toneMapped: false,
+                                                   side: THREE.DoubleSide });
+      }
       m.needsUpdate = true;
     }
   });
-  scene.add(root);
-  statusEl.textContent = 'Ready — press Enter VR, or click the view and use W A S D.';
+
+  scene.add(model);
+  const bb = new THREE.Box3().setFromObject(model);
+  const s = bb.getSize(new THREE.Vector3());
+  statusEl.innerHTML = note +
+    `Loaded. Extents <b>${s.x.toFixed(2)} × ${s.z.toFixed(2)} × ${s.y.toFixed(2)} m</b>. Press Enter VR.`;
 }
 
 loader.load(MODEL_URL, addModel, undefined, () => {
-  statusEl.innerHTML = 'Could not find <b>bedroom_vr.glb</b> beside this page.';
+  statusEl.innerHTML = `Could not find <b>${MODEL_URL}</b> beside this page.`;
   dropEl.classList.add('on');
 });
 
-// drag-and-drop fallback, so this works from a local folder too
-['dragenter','dragover'].forEach(e => addEventListener(e, ev => {
-  ev.preventDefault(); dropEl.classList.add('on');
-}));
-addEventListener('dragleave', ev => { if (ev.relatedTarget === null) dropEl.classList.remove('on'); });
+['dragenter', 'dragover'].forEach(e =>
+  addEventListener(e, ev => { ev.preventDefault(); dropEl.classList.add('on'); }));
+addEventListener('dragleave', ev => { if (!ev.relatedTarget) dropEl.classList.remove('on'); });
 addEventListener('drop', ev => {
   ev.preventDefault(); dropEl.classList.remove('on');
-  const f = ev.dataTransfer.files && ev.dataTransfer.files[0];
-  if (!f) return;
-  statusEl.textContent = 'Loading ' + f.name + '…';
+  const f = ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return;
+  statusEl.textContent = 'Loading ' + f.name + '… ';
   const url = URL.createObjectURL(f);
   loader.load(url, g => { addModel(g); URL.revokeObjectURL(url); },
               undefined, () => statusEl.textContent = 'That file would not load.');
 });
 
-// ---------------------------------------------------------------- desktop controls
+/* ------------------------------- recentre ------------------------------- */
+function recentre() {
+  player.position.copy(START);
+  player.rotation.set(0, START_YAW, 0);
+  pitchObj.rotation.set(0, 0, 0);
+  yaw = START_YAW; pitch = 0;
+}
+document.getElementById('bReset').onclick = recentre;
+document.getElementById('bGrid').onclick = () => grid.visible = !grid.visible;
+document.getElementById('bHud').onclick = () =>
+  hudEl.style.display = hudEl.style.display === 'none' ? 'block' : 'none';
+
+/* --------------------------- flat-screen look ---------------------------
+   Drag to look. Pointer lock is unreliable inside the Quest browser, so
+   dragging is the primary path and lock is a bonus on desktop.
+------------------------------------------------------------------------ */
+let yaw = START_YAW, pitch = 0, dragging = false, lastX = 0, lastY = 0;
+const cv = renderer.domElement;
+
+cv.addEventListener('pointerdown', e => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY; cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointerup', e => {
+  dragging = false; try { cv.releasePointerCapture(e.pointerId); } catch (err) {}
+});
+cv.addEventListener('pointermove', e => {
+  const locked = document.pointerLockElement === cv;
+  let dx, dy;
+  if (locked) { dx = e.movementX; dy = e.movementY; }
+  else if (dragging) { dx = e.clientX - lastX; dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY; }
+  else return;
+  yaw -= dx * 0.0035;
+  pitch = THREE.MathUtils.clamp(pitch - dy * 0.0035, -1.4, 1.4);
+});
+cv.addEventListener('dblclick', () => { if (!renderer.xr.isPresenting) cv.requestPointerLock(); });
+
 const keys = Object.create(null);
-addEventListener('keydown', e => keys[e.code] = true);
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyR') recentre();
+  if (e.code === 'KeyG') grid.visible = !grid.visible;
+});
 addEventListener('keyup', e => keys[e.code] = false);
 
-let yaw = 0, pitch = 0, locked = false;
-renderer.domElement.addEventListener('click', () => {
-  if (!renderer.xr.isPresenting) renderer.domElement.requestPointerLock();
-});
-document.addEventListener('pointerlockchange', () => {
-  locked = document.pointerLockElement === renderer.domElement;
-});
-addEventListener('mousemove', e => {
-  if (!locked) return;
-  yaw -= e.movementX * 0.0022;
-  pitch -= e.movementY * 0.0022;
-  pitch = Math.max(-1.45, Math.min(1.45, pitch));
-});
-
-function desktopStep(dt) {
-  camera.rotation.set(pitch, 0, 0);
+function flatStep(dt) {
   player.rotation.set(0, yaw, 0);
+  pitchObj.rotation.set(pitch, 0, 0);
   const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
   const s = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
   if (!f && !s) return;
-  const v = (keys.ShiftLeft || keys.ShiftRight ? RUN : WALK) * dt;
+  const v = ((keys.ShiftLeft || keys.ShiftRight) ? RUN : WALK) * dt;
   player.position.x += (Math.sin(yaw) * -f + Math.cos(yaw) * s) * v;
   player.position.z += (Math.cos(yaw) * -f - Math.sin(yaw) * s) * v;
 }
 
-// ---------------------------------------------------------------- VR locomotion
+/* ----------------------------- VR locomotion -----------------------------
+   Turning rotates the player about the HEAD, not the rig origin, so you
+   pivot on the spot instead of swinging sideways. Pitch and roll are left
+   entirely to the headset.
+------------------------------------------------------------------------ */
 const fwd = new THREE.Vector3(), rgt = new THREE.Vector3();
-const q = new THREE.Quaternion(), head = new THREE.Vector3();
-let turnLatched = false;
+const q = new THREE.Quaternion(), headW = new THREE.Vector3();
+const headLocal = new THREE.Vector3(), rotated = new THREE.Vector3();
+let turnLatch = false, aLatch = false, bLatch = false;
 
-function snapTurn(dir) {
-  const a = -dir * TURN_STEP;
-  renderer.xr.getCamera().getWorldPosition(head);
-  player.position.sub(head);
-  player.position.applyAxisAngle(THREE.Object3D.DEFAULT_UP, a);
-  player.position.add(head);
-  player.rotation.y += a;
+function turnAboutHead(angle) {
+  renderer.xr.getCamera().getWorldPosition(headW);
+  headLocal.copy(headW).sub(player.position);
+  rotated.copy(headLocal).applyAxisAngle(UP, angle);
+  player.position.add(headLocal).sub(rotated);
+  player.rotation.y += angle;
 }
 
 function xrStep(dt) {
   const session = renderer.xr.getSession();
   if (!session) return;
+
+  pitchObj.rotation.set(0, 0, 0);
+  player.rotation.x = 0; player.rotation.z = 0;   // kill any accumulated roll
+
   const cam = renderer.xr.getCamera();
   cam.getWorldQuaternion(q);
   fwd.set(0, 0, -1).applyQuaternion(q); fwd.y = 0;
@@ -225,39 +332,40 @@ function xrStep(dt) {
   rgt.set(1, 0, 0).applyQuaternion(q); rgt.y = 0; rgt.normalize();
 
   for (const src of session.inputSources) {
-    const gp = src.gamepad;
-    if (!gp || !gp.axes) continue;
+    const gp = src.gamepad; if (!gp || !gp.axes) continue;
     const ax = gp.axes;
-    const x = ax.length > 2 ? ax[2] : (ax[0] || 0);
-    const y = ax.length > 3 ? ax[3] : (ax[1] || 0);
-    const squeezing = gp.buttons && gp.buttons[1] && gp.buttons[1].value > 0.5;
+    const sx = ax.length > 2 ? ax[2] : (ax[0] || 0);
+    const sy = ax.length > 3 ? ax[3] : (ax[1] || 0);
+    const grip = gp.buttons && gp.buttons[1] && gp.buttons[1].value > 0.5;
 
     if (src.handedness === 'left') {
-      if (Math.abs(x) > 0.15 || Math.abs(y) > 0.15) {
-        const v = (squeezing ? RUN : WALK) * dt;
-        player.position.addScaledVector(fwd, -y * v);
-        player.position.addScaledVector(rgt, x * v);
-      }
-    } else if (src.handedness === 'right') {
-      if (Math.abs(x) > 0.7) {
-        if (!turnLatched) { snapTurn(Math.sign(x)); turnLatched = true; }
-      } else if (Math.abs(x) < 0.3) {
-        turnLatched = false;
-      }
-      if (Math.abs(y) > 0.4) {
-        player.position.y = Math.max(-0.6, Math.min(1.2, player.position.y - y * 0.9 * dt));
+      if (Math.abs(sx) > 0.15 || Math.abs(sy) > 0.15) {
+        const v = (grip ? RUN : WALK) * dt;
+        player.position.addScaledVector(fwd, -sy * v);
+        player.position.addScaledVector(rgt, sx * v);
       }
     }
+    if (src.handedness === 'right') {
+      if (Math.abs(sx) > 0.65) {
+        if (!turnLatch) { turnAboutHead(-Math.sign(sx) * TURN_STEP); turnLatch = true; }
+      } else if (Math.abs(sx) < 0.3) turnLatch = false;
+    }
+
+    const a = gp.buttons && gp.buttons[4] && gp.buttons[4].pressed;
+    const bb = gp.buttons && gp.buttons[5] && gp.buttons[5].pressed;
+    if (a && !aLatch) { recentre(); aLatch = true; } if (!a) aLatch = false;
+    if (bb && !bLatch) { grid.visible = !grid.visible; bLatch = true; } if (!bb) bLatch = false;
   }
 }
 
-// ---------------------------------------------------------------- loop
+/* --------------------------------- loop --------------------------------- */
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
-  if (renderer.xr.isPresenting) xrStep(dt); else desktopStep(dt);
+  if (renderer.xr.isPresenting) xrStep(dt); else flatStep(dt);
   renderer.render(scene, camera);
 });
+renderer.xr.addEventListener('sessionstart', recentre);
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
