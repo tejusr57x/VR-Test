@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bedroom — VR Walkthrough</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#101014;
+               font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  canvas { display:block; }
+  #hud {
+    position:fixed; left:16px; top:16px; max-width:330px; z-index:10;
+    background:rgba(16,16,20,.82); border:1px solid rgba(255,255,255,.14);
+    border-radius:12px; padding:14px 16px; color:#e8e6e2; font-size:13px; line-height:1.55;
+    backdrop-filter:blur(8px);
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  }
+  #hud h1 { font-size:14px; margin:0 0 8px; font-weight:600; letter-spacing:.2px; }
+  #hud b { color:#fff; font-weight:600; }
+  #hud .row { margin:3px 0; }
+  #hud .dim { color:#9a978f; }
+  #status { margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.12);
+            color:#9a978f; font-size:12px; }
+  #drop { position:fixed; inset:0; z-index:20; display:none; align-items:center;
+          justify-content:center; background:rgba(10,10,14,.9); color:#fff; font-size:18px; }
+  #drop.on { display:flex; }
+  #hide { position:fixed; left:16px; bottom:16px; z-index:10; cursor:pointer;
+          background:rgba(16,16,20,.82); border:1px solid rgba(255,255,255,.14);
+          color:#c9c6c0; border-radius:9px; padding:7px 13px; font-size:12px;
+          margin-bottom: env(safe-area-inset-bottom, 0px); }
+  #VRButton { z-index:12 !important; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div id="hud">
+  <h1>Bedroom — 13' × 13'</h1>
+  <div class="row"><b>In VR:</b> left stick walks, right stick turns</div>
+  <div class="row"><b>Grip</b> to move faster &middot; <b>right stick up/down</b> adjusts height</div>
+  <div class="row dim" style="margin-top:8px"><b>On desktop:</b> click to look, W A S D to walk, Shift to run</div>
+  <div id="status">Loading model…</div>
+</div>
+<div id="hide">hide</div>
+<div id="drop">Drop <b style="margin:0 6px">bedroom_vr.glb</b> anywhere to load it</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const MODEL_URL = 'bedroom_vr.glb';   // keep the .glb beside this HTML file
+const MODEL_SCALE = 0.001;            // the GLB is authored in millimetres
+const START = new THREE.Vector3(2.0, 0, 1.6);  // just inside the door, metres
+const WALK = 1.6, RUN = 3.2, TURN_STEP = Math.PI / 6;
+
+const statusEl = document.getElementById('status');
+const hudEl = document.getElementById('hud');
+const dropEl = document.getElementById('drop');
+document.getElementById('hide').onclick = () => {
+  hudEl.style.display = hudEl.style.display === 'none' ? 'block' : 'none';
+};
+
+// ---------------------------------------------------------------- renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
+
+// ---------------------------------------------------------------- scene
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0e0e12);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 200);
+camera.position.set(0, 1.62, 0);
+
+const player = new THREE.Group();
+player.position.copy(START);
+player.add(camera);
+scene.add(player);
+
+// late-afternoon sun coming in through the north window
+const sun = new THREE.DirectionalLight(0xffd9a8, 3.4);
+sun.position.set(-2.5, 4.2, 11);
+sun.target.position.set(2, 1, 2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 30;
+sun.shadow.camera.left = -8; sun.shadow.camera.right = 8;
+sun.shadow.camera.top = 8; sun.shadow.camera.bottom = -8;
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+scene.add(new THREE.HemisphereLight(0xdfe6f0, 0x6b5f4e, 0.75));
+
+const bounce = new THREE.PointLight(0xffe2bd, 12, 9, 2);
+bounce.position.set(2, 1.4, 2.4);
+scene.add(bounce);
+
+// ---------------------------------------------------------------- model
+const loader = new GLTFLoader();
+
+function addModel(gltf) {
+  const root = gltf.scene;
+  root.scale.setScalar(MODEL_SCALE);
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m) continue;
+      if (m.map) { m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = 8; }
+      // the backdrop planes are lit photographs — don't shade them
+      if (o.name && o.name.startsWith('view_')) {
+        o.castShadow = false; o.receiveShadow = false;
+        if (m.map) {
+          const flat = new THREE.MeshBasicMaterial({ map: m.map, toneMapped: false });
+          o.material = flat;
+        }
+      }
+      m.side = THREE.DoubleSide;
+      m.needsUpdate = true;
+    }
+  });
+  scene.add(root);
+  statusEl.textContent = 'Ready — press Enter VR, or click the view and use W A S D.';
+}
+
+loader.load(MODEL_URL, addModel, undefined, () => {
+  statusEl.innerHTML = 'Could not find <b>bedroom_vr.glb</b> beside this page.';
+  dropEl.classList.add('on');
+});
+
+// drag-and-drop fallback, so this works from a local folder too
+['dragenter','dragover'].forEach(e => addEventListener(e, ev => {
+  ev.preventDefault(); dropEl.classList.add('on');
+}));
+addEventListener('dragleave', ev => { if (ev.relatedTarget === null) dropEl.classList.remove('on'); });
+addEventListener('drop', ev => {
+  ev.preventDefault(); dropEl.classList.remove('on');
+  const f = ev.dataTransfer.files && ev.dataTransfer.files[0];
+  if (!f) return;
+  statusEl.textContent = 'Loading ' + f.name + '…';
+  const url = URL.createObjectURL(f);
+  loader.load(url, g => { addModel(g); URL.revokeObjectURL(url); },
+              undefined, () => statusEl.textContent = 'That file would not load.');
+});
+
+// ---------------------------------------------------------------- desktop controls
+const keys = Object.create(null);
+addEventListener('keydown', e => keys[e.code] = true);
+addEventListener('keyup', e => keys[e.code] = false);
+
+let yaw = 0, pitch = 0, locked = false;
+renderer.domElement.addEventListener('click', () => {
+  if (!renderer.xr.isPresenting) renderer.domElement.requestPointerLock();
+});
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === renderer.domElement;
+});
+addEventListener('mousemove', e => {
+  if (!locked) return;
+  yaw -= e.movementX * 0.0022;
+  pitch -= e.movementY * 0.0022;
+  pitch = Math.max(-1.45, Math.min(1.45, pitch));
+});
+
+function desktopStep(dt) {
+  camera.rotation.set(pitch, 0, 0);
+  player.rotation.set(0, yaw, 0);
+  const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
+  const s = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+  if (!f && !s) return;
+  const v = (keys.ShiftLeft || keys.ShiftRight ? RUN : WALK) * dt;
+  player.position.x += (Math.sin(yaw) * -f + Math.cos(yaw) * s) * v;
+  player.position.z += (Math.cos(yaw) * -f - Math.sin(yaw) * s) * v;
+}
+
+// ---------------------------------------------------------------- VR locomotion
+const fwd = new THREE.Vector3(), rgt = new THREE.Vector3();
+const q = new THREE.Quaternion(), head = new THREE.Vector3();
+let turnLatched = false;
+
+function snapTurn(dir) {
+  const a = -dir * TURN_STEP;
+  renderer.xr.getCamera().getWorldPosition(head);
+  player.position.sub(head);
+  player.position.applyAxisAngle(THREE.Object3D.DEFAULT_UP, a);
+  player.position.add(head);
+  player.rotation.y += a;
+}
+
+function xrStep(dt) {
+  const session = renderer.xr.getSession();
+  if (!session) return;
+  const cam = renderer.xr.getCamera();
+  cam.getWorldQuaternion(q);
+  fwd.set(0, 0, -1).applyQuaternion(q); fwd.y = 0;
+  if (fwd.lengthSq() < 1e-6) return;
+  fwd.normalize();
+  rgt.set(1, 0, 0).applyQuaternion(q); rgt.y = 0; rgt.normalize();
+
+  for (const src of session.inputSources) {
+    const gp = src.gamepad;
+    if (!gp || !gp.axes) continue;
+    const ax = gp.axes;
+    const x = ax.length > 2 ? ax[2] : (ax[0] || 0);
+    const y = ax.length > 3 ? ax[3] : (ax[1] || 0);
+    const squeezing = gp.buttons && gp.buttons[1] && gp.buttons[1].value > 0.5;
+
+    if (src.handedness === 'left') {
+      if (Math.abs(x) > 0.15 || Math.abs(y) > 0.15) {
+        const v = (squeezing ? RUN : WALK) * dt;
+        player.position.addScaledVector(fwd, -y * v);
+        player.position.addScaledVector(rgt, x * v);
+      }
+    } else if (src.handedness === 'right') {
+      if (Math.abs(x) > 0.7) {
+        if (!turnLatched) { snapTurn(Math.sign(x)); turnLatched = true; }
+      } else if (Math.abs(x) < 0.3) {
+        turnLatched = false;
+      }
+      if (Math.abs(y) > 0.4) {
+        player.position.y = Math.max(-0.6, Math.min(1.2, player.position.y - y * 0.9 * dt));
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------- loop
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  if (renderer.xr.isPresenting) xrStep(dt); else desktopStep(dt);
+  renderer.render(scene, camera);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
